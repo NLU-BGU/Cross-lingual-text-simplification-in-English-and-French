@@ -15,15 +15,14 @@ SYSTEM_PROMPT = (
     "Your response must begin directly with the final, complete answer."
 )
 
-def get_completion(prompt, model="gpt-4o"):
+def get_completion(prompt, model="gpt-4o-mini"):
     """Helper function to streamline API calls"""
     response = client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
-        ],
-        temperature=0.3 # Lower temperature for more consistent, direct outputs
+        ]
     )
     return response.choices[0].message.content
 
@@ -61,6 +60,8 @@ def pipeline_simplify_then_translate_prompt(txt, model, lang='French'):
 
 propmt_types = ['direct', 'CoT translate->simplify', 'CoT simplify->translate', 'pipeline translate->simplify',
                'pipeline simplify->translate']
+
+model = "gpt-4o-mini"
 
 for file in os.listdir('input'):
     if file.endswith('.xlsx'):

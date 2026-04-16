@@ -96,4 +96,5 @@ for corp in corpus:
     test_set = pd.read_excel(f'mt5-training/{corp}.xlsx')
     col = [col for col in test_set.columns if 'Complex' in col][0]
     results=model.predict(list(test_set[col]))
+    test_set['Predictions-mt5']=results
     test_set.to_excel(f"mt5-training/outputs/{corp} mt5 results.xlsx")

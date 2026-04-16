@@ -18,8 +18,7 @@ files=[
 
 
 for file in files:
-    xls_file = pd.ExcelFile(f'input/{file}.xlsx')
-    df = pd.read_excel(xls_file)
+    df = pd.read_excel(f'input/{file}.xlsx')
     if file in ['Clear', 'WikiLarge FR']:
         df['English Translated'] = df.apply(lambda row: translate_text(row['French Complex'].tolist(), 'fr', 'en'), axis=1)
         df['English Simplified'] = df.apply(lambda row: translate_text(row['French Simplified'].tolist(), 'fr', 'en'), axis=1)
