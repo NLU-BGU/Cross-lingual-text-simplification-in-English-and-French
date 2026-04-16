@@ -80,17 +80,10 @@ for file in os.listdir('input'):
         for i, txt in enumerate(complex_text):
     
             direct = direct_prompt(txt, model, lang)
-            print(f'direct: \n{direct}\n')
             cot_translate_simplify = cot_translate_then_simplify_prompt(txt, model, lang)
-            print(f'CoT translate then simplify: \n{cot_translate_simplify}\n')
             cot_simplify_translate = cot_simplify_then_translate_prompt(txt, model, lang)
-            print(f'CoT simplify then translate: \n{cot_simplify_translate}\n')
             pipeline_translate_simplify = pipeline_translate_then_simplify_prompt(txt, model, lang)
-            print(f'pipeline translate then simplify: \n{pipeline_translate_simplify}\n')
             pipeline_simplify_translate = pipeline_simplify_then_translate_prompt(txt, model, lang)
-            print(f'pipeline simplify then translate: \n{pipeline_simplify_translate}')       
-
-            
 
             results['direct'].append(direct)
             results['CoT translate->simplify'].append(cot_translate_simplify)
