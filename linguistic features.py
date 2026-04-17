@@ -1,74 +1,93 @@
-import re
+import argparse
+import os
+from functools import lru_cache
+from typing import Any, Dict, Iterable, Optional
+
 import nltk
-import spacy
 import numpy as np
-
-import pyphen
-import stanza
-import textstat
-import spacy
-from spacy.lang.fr.examples import sentences
-spacy.cli.download("fr_core_news_sm")
 import pandas as pd
-from nltk.corpus import stopwords
+import pyphen
+import spacy
+import textstat
+from nltk.corpus import wordnet, words as nltk_words
+from nltk.tokenize import sent_tokenize, word_tokenize
 
-from nltk.corpus import wordnet, stopwords, words as nltk_words
-# Download necessary NLTK resources
-nltk.download('punkt')
-nltk.download('punkt_tab')
-nltk.download('averaged_perceptron_tagger_eng')
-nltk.download('wordnet')
-nltk.download('words')
-nltk.download('averaged_perceptron_tagger')
-nltk.download('omw-1.4')
-stanza.download('english')
-stanza.download('french')
-# nltk.download('stopwords')
-from nltk.tokenize import word_tokenize, sent_tokenize
 
-def get_french_wordnet_words():
-    """Get set of French words from Open Multilingual Wordnet"""
-    nltk.download('omw-1.4')  # Download Open Multilingual Wordnet
-    nltk.download('wordnet')  # Download WordNet
+def ensure_resources(download: bool = False) -> None:
+    """Ensure required NLP resources are available.
 
-    french_words = set()
-    # Get all synsets
+    By default this function does **not** download anything (GitHub-friendly).
+    If you pass `download=True`, it will attempt to download missing resources.
+
+    Args:
+        download: If True, download missing spaCy / NLTK resources.
+    """
+    if not download:
+        return
+
+    # NLTK resources (safe to call; no-op if present)
+    for pkg in [
+        "punkt",
+        "averaged_perceptron_tagger",
+        "wordnet",
+        "words",
+        "omw-1.4",
+    ]:
+        nltk.download(pkg)
+
+    # spaCy French model (download if missing)
+    try:
+        spacy.load("fr_core_news_sm")
+    except OSError:
+        spacy.cli.download("fr_core_news_sm")
+
+    # spaCy English model (download if missing)
+    try:
+        spacy.load("en_core_web_sm")
+    except OSError:
+        spacy.cli.download("en_core_web_sm")
+
+
+@lru_cache(maxsize=1)
+def get_french_wordnet_words() -> set[str]:
+    """Get a set of French words from Open Multilingual Wordnet.
+
+    Returns:
+        A lowercase set of French lemma strings.
+    """
+    french_words: set[str] = set()
     for synset in wordnet.all_synsets():
-        # Get French lemmas for each synset
-        for lemma in synset.lemmas(lang='fra'):
-            # Add the French word
+        for lemma in synset.lemmas(lang="fra"):
             french_words.add(lemma.name().lower())
-    
-
-    return set(french_words)
-    # .update(nltk_stopwords.words('french')))
-
-
-french_words=get_french_wordnet_words()
+    return french_words
 class TextComplexityAnalyzer:
-    def __init__(self, text,language):
-      self.language=language
-      if language=='english':
-        # Load spaCy English model
-        self.nlp = spacy.load('en_core_web_sm')
+    """Compute a set of lexical/syntactic complexity metrics for a text."""
 
+    def __init__(self, text: str, language: str):
+        """
+        Args:
+            text: Input text.
+            language: "english" or "french" (lowercase).
+        """
+        self.language = language
         self.text = text
+
+        if language == "english":
+            self.nlp = spacy.load("en_core_web_sm")
+        elif language == "french":
+            self.nlp = spacy.load("fr_core_news_sm")
+        else:
+            raise ValueError("language must be 'english' or 'french'")
+
         self.doc = self.nlp(text)
         self.tokens = word_tokenize(text)
         self.sentences = sent_tokenize(text)
 
         # Precompute some analyses
         self.pos_tags = nltk.pos_tag(self.tokens)
-        self.clean_tokens = [str(token) for token in self.doc if token.is_punct == False and token.is_space == False]
-      elif language=='french':
-        self.nlp = spacy.load('fr_core_news_sm')
-        self.text = text
-        self.doc = self.nlp(text)
-        self.tokens = word_tokenize(text)
-        self.sentences = sent_tokenize(text)
-
-        self.pos_tags = nltk.pos_tag(self.tokens)
-        self.clean_tokens = [str(token) for token in self.doc if token.is_punct == False and token.is_space == False]
+        self.clean_tokens = [
+            str(token) for token in self.doc if (not token.is_punct) and (not token.is_space)
+        ]
 
 
     def lexical_richness(self):
@@ -129,16 +148,16 @@ class TextComplexityAnalyzer:
         return content_words/len(self.clean_tokens)  if len(self.clean_tokens)>0 else 0
 
     def infrequent_words_ratio(self):
-        """Ratio of words not in common English word list"""
-        if self.language=='english':
-          common_words = set(nltk_words.words())
-          # common_words.update(nltk_stopwords.words('english'))
-          infrequent_words = sum(1 for token in self.clean_tokens if token.lower() not in set(common_words))
-          return infrequent_words/len(self.clean_tokens) if len(self.clean_tokens)>0 else 0
-        elif self.language=='french':
-          common_words = french_words
-          infrequent_words = sum(1 for token in self.clean_tokens if token.lower() not in common_words)
-          return infrequent_words/len(self.clean_tokens) if len(self.clean_tokens)>0 else 0
+        """Ratio of words not in common English/French word list"""
+        if self.language == "english":
+            common_words = set(nltk_words.words())
+            infrequent_words = sum(1 for token in self.clean_tokens if token.lower() not in common_words)
+            return infrequent_words / len(self.clean_tokens) if len(self.clean_tokens) > 0 else 0
+        if self.language == "french":
+            common_words = get_french_wordnet_words()
+            infrequent_words = sum(1 for token in self.clean_tokens if token.lower() not in common_words)
+            return infrequent_words / len(self.clean_tokens) if len(self.clean_tokens) > 0 else 0
+        return 0
 
 
     def long_words_ratio(self, threshold=9):
@@ -175,7 +194,7 @@ class TextComplexityAnalyzer:
 
     def count_past_perfect_verbs(self):
         """
-        Count the number of past perfect verbs in a sentence.
+        Count the ratio of past perfect verbs in a sentence.
         """
         if self.language=='english':
           past_perfect_count = 0
@@ -349,7 +368,6 @@ class TextComplexityAnalyzer:
     def short_sentences_ratio(self, max_words=10):
         """
         Calculate the ratio of short sentences
-        (Arfe et al., 2018)
         """
         # Count sentences with fewer than max_words
         short_sentences = sum(1 for sent in self.sentences
@@ -359,9 +377,6 @@ class TextComplexityAnalyzer:
     def calculate_avg_word_length(self) -> float:
         """
         Calculates the average length of words in the text using clean tokens.
-        
-        Returns:
-            float: The mean number of characters per word. Returns 0 if no tokens exist.
         """
         # Calculate the average word length
         total_length = sum(len(word) for word in self.clean_tokens)
@@ -370,12 +385,6 @@ class TextComplexityAnalyzer:
     def syllable_to_word_ratio(self) -> float:
         """
         Calculates the average number of syllables per word.
-        
-        Uses the Pyphen library to hyphenate words based on the instance's 
-        defined language (English or French).
-        
-        Returns:
-            float: The ratio of total syllables to the total number of clean tokens.
         """
         if self.language == 'french':
             lang = 'fr_FR'
@@ -406,12 +415,6 @@ class TextComplexityAnalyzer:
     def get_syntactic_depth(self):
         """
         Calculates the maximum syntactic tree depth for a text.
-    
-        Args:
-            doc (spacy.tokens.Doc): The spaCy Doc object.
-    
-        Returns:
-            int: The maximum depth of any syntactic tree in the text.
         """
         max_depth = 0
         for token in self.doc:
@@ -517,31 +520,112 @@ def add_text_complexity_metrics(df, text_column, language):
     return df_copy
 
 
-files=[
-    'Clear','WikiLarge FR', 
-    'asset', 
-    'MultiCochrane',
-    'WikiAuto', 
-       ]
+DEFAULT_FILES = [
+    "Clear",
+    "WikiLarge FR",
+    "asset",
+    "MultiCochrane",
+    "WikiAuto",
+]
 
 
-for input_file in files:
-    xls_file = pd.ExcelFile(f'llm output/{input_file} output.xlsx')
-    df = pd.read_excel(xls_file)
-    llm_dfs = {}
-    for sheet in xls_file.sheet_names:
-        df = pd.read_excel(xls_file, sheet_name=sheet)
-        if input_file in ['Clear','WikiLarge FR']:
-            language = 'english'
-        elif input_file in ['WikiAuto', 'asset', 'MultiCochrane']:
-            language = 'french'
-        df_with_metrics = add_text_complexity_metrics(df[[sheet]],f'{sheet} response',language)
-        llm_dfs[sheet] = df_with_metrics
-        
-    output_file=f'bats features output/{input_file} with bats metrics.xlsx'
-    with pd.ExcelWriter(output_file) as writer:
-        # Loop through the dictionary and create a sheet for each key
-        for sheet_name, sheet_data in llm_dfs.items():
-            # Convert the sheet data to a DataFrame
-            df = pd.DataFrame(sheet_data)
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
+def infer_language_from_dataset(dataset_name: str) -> str:
+    """Infer analysis language based on dataset naming conventions.
+
+    Args:
+        dataset_name: Dataset basename.
+
+    Returns:
+        "english" or "french".
+    """
+    if dataset_name in ["Clear", "WikiLarge FR"]:
+        return "english"
+    return "french"
+
+
+def _pick_text_column(df: pd.DataFrame, preferred: Optional[str] = None) -> str:
+    """Pick which column to analyze from a sheet.
+
+    Args:
+        df: Sheet DataFrame.
+        preferred: If provided and present, it will be used.
+
+    Returns:
+        Column name to analyze.
+    """
+    if preferred and preferred in df.columns:
+        return preferred
+
+    for col in df.columns:
+        if "response" in str(col).lower():
+            return str(col)
+
+    return str(df.columns[0])
+
+
+def run(
+    datasets: Iterable[str],
+    input_dir: str = "llm output",
+    output_dir: str = "bats features output",
+    download_resources: bool = False,
+    preferred_text_column: Optional[str] = None,
+) -> None:
+    """Compute complexity metrics for each sheet in each dataset workbook.
+
+    Args:
+        datasets: Dataset basenames (without extension).
+        input_dir: Directory containing `"<dataset> output.xlsx"` files.
+        output_dir: Directory to write output workbooks into.
+        download_resources: If True, download missing NLTK/spaCy resources.
+        preferred_text_column: If set and present in a sheet, use it; otherwise auto-detect.
+    """
+    ensure_resources(download=download_resources)
+    os.makedirs(output_dir, exist_ok=True)
+
+    for dataset in datasets:
+        in_path = os.path.join(input_dir, f"{dataset} output.xlsx")
+        xls = pd.ExcelFile(in_path)
+        language = infer_language_from_dataset(dataset)
+
+        out_sheets: Dict[str, pd.DataFrame] = {}
+        for sheet_name in xls.sheet_names:
+            sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
+            text_col = _pick_text_column(sheet_df, preferred=preferred_text_column)
+            out_sheets[sheet_name] = add_text_complexity_metrics(sheet_df, text_col, language)
+
+        out_path = os.path.join(output_dir, f"{dataset} with bats metrics.xlsx")
+        with pd.ExcelWriter(out_path) as writer:
+            for sheet_name, sheet_data in out_sheets.items():
+                pd.DataFrame(sheet_data).to_excel(writer, sheet_name=sheet_name, index=False)
+
+
+def main() -> None:
+    """CLI entrypoint."""
+    parser = argparse.ArgumentParser(description="Compute linguistic complexity features for LLM outputs.")
+    parser.add_argument("--input-dir", default="llm output")
+    parser.add_argument("--output-dir", default="bats features output")
+    parser.add_argument("--datasets", default=None, help="Comma-separated dataset names (default: built-in list).")
+    parser.add_argument(
+        "--text-column",
+        default=None,
+        help="Preferred text column name (otherwise auto-detected).",
+    )
+    parser.add_argument(
+        "--download-resources",
+        action="store_true",
+        help="Download missing NLTK/spaCy resources (disabled by default).",
+    )
+    args = parser.parse_args()
+
+    datasets = DEFAULT_FILES
+    run(
+        datasets=datasets,
+        input_dir=args.input_dir,
+        output_dir=args.output_dir,
+        download_resources=args.download_resources,
+        preferred_text_column=args.text_column,
+    )
+
+
+if __name__ == "__main__":
+    main()

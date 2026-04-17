@@ -2,6 +2,8 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 import pandas as pd
+import argparse
+from typing import Optional
 # Load variables from .env into environment variables
 load_dotenv()
 
@@ -58,45 +60,64 @@ def pipeline_simplify_then_translate_prompt(txt, model, lang='French'):
 
 
 
-propmt_types = ['direct', 'CoT translate->simplify', 'CoT simplify->translate', 'pipeline translate->simplify',
-               'pipeline simplify->translate']
+PROMPT_TYPES = [
+    'direct',
+    'CoT translate->simplify',
+    'CoT simplify->translate',
+    'pipeline translate->simplify',
+    'pipeline simplify->translate',
+]
 
-model = "gpt-4o-mini"
 
-for file in os.listdir('input'):
-    if file.endswith('.xlsx'):
-        os.mkdir(f'output {model}')
-        results = {key: [] for key in propmt_types}
-        file_name = file.split('.')[0]
-        df = pd.read_excel(f'input/{file}')
-        complex_text = [col for col in list(df.columns) if 'Complex' in col][0]
-        complex_lang = complex_text.split(' ')[0]
-        if complex_lang=='English':
-            lang='French'
-        elif complex_lang=='French':
-            lang='English'
-        print(f"{file_name} {complex_text} {lang}")
-        complex_text = list(df[complex_text])
-        for i, txt in enumerate(complex_text):
-    
-            direct = direct_prompt(txt, model, lang)
-            cot_translate_simplify = cot_translate_then_simplify_prompt(txt, model, lang)
-            cot_simplify_translate = cot_simplify_then_translate_prompt(txt, model, lang)
-            pipeline_translate_simplify = pipeline_translate_then_simplify_prompt(txt, model, lang)
-            pipeline_simplify_translate = pipeline_simplify_then_translate_prompt(txt, model, lang)
+def _infer_target_language(complex_column_name: str) -> str:
+    complex_lang = complex_column_name.split(' ')[0]
+    if complex_lang == 'English':
+        return 'French'
+    if complex_lang == 'French':
+        return 'English'
+    return 'French'
 
-            results['direct'].append(direct)
-            results['CoT translate->simplify'].append(cot_translate_simplify)
-            results['CoT simplify->translate'].append(cot_simplify_translate)
-            results['pipeline translate->simplify'].append(pipeline_translate_simplify)
-            results['pipeline simplify->translate'].append(pipeline_simplify_translate)
-        
-        with pd.ExcelWriter(f'output {model}/{file_name} {model} response.xlsx', engine='openpyxl') as writer:
+
+def run(input_dir: str, model: str, output_dir: Optional[str] = None) -> None:
+    out_dir = output_dir or f"output {model}"
+    os.makedirs(out_dir, exist_ok=True)
+
+    for filename in os.listdir(input_dir):
+        if not filename.lower().endswith('.xlsx'):
+            continue
+
+        results = {key: [] for key in PROMPT_TYPES}
+        file_stem = os.path.splitext(filename)[0]
+
+        df_in = pd.read_excel(os.path.join(input_dir, filename))
+        complex_candidates = [col for col in df_in.columns if 'Complex' in str(col)]
+        if not complex_candidates:
+            raise ValueError(f"No column containing 'Complex' found in {filename}")
+        complex_col = str(complex_candidates[0])
+        lang = _infer_target_language(complex_col)
+
+        for txt in df_in[complex_col].tolist():
+            results['direct'].append(direct_prompt(txt, model, lang))
+            results['CoT translate->simplify'].append(cot_translate_then_simplify_prompt(txt, model, lang))
+            results['CoT simplify->translate'].append(cot_simplify_then_translate_prompt(txt, model, lang))
+            results['pipeline translate->simplify'].append(pipeline_translate_then_simplify_prompt(txt, model, lang))
+            results['pipeline simplify->translate'].append(pipeline_simplify_then_translate_prompt(txt, model, lang))
+
+        out_path = os.path.join(out_dir, f"{file_stem} {model} response.xlsx")
+        with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
             for sheet_name, content in results.items():
-                # Convert the list/dict into a Pandas DataFrame
-                df = pd.DataFrame(content)
-                
-                # Write the DataFrame to a specific sheet
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-    
-        
+                pd.DataFrame(content).to_excel(writer, sheet_name=sheet_name, index=False)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run prompting strategies over input XLSX files.")
+    parser.add_argument("--input-dir", default="input", help="Directory containing input .xlsx files.")
+    parser.add_argument("--model", default="gpt-4o-mini", help="OpenAI model name.")
+    parser.add_argument("--output-dir", default=None, help="Output directory (default: 'output <model>').")
+    args = parser.parse_args()
+
+    run(input_dir=args.input_dir, model=args.model, output_dir=args.output_dir)
+
+
+if __name__ == "__main__":
+    main()

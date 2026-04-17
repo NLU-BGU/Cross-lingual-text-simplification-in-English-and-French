@@ -1,0 +1,16 @@
+pandas
+openai
+python-dotenv
+openpyxl
+xlsxwriter
+deep-translator
+nltk
+spacy
+numpy
+pyphen
+textstat
+easse
+bert-score
+sentence-transformers
+torch
+simpletransformers
