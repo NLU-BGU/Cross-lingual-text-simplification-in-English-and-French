@@ -9,7 +9,7 @@ This repository contains code for the paper **"Translate or Simplify First: An A
 ## Project Structure
 
 ```
-├── prompting_strategies.py      # LLM-based simplification using different prompt strategies
+├── prompting_strategies.py      # LLM-based cross-lingual simplification using different prompt strategies
 ├── mT5.py                       # mT5 model training
 ├── texts_translations.py        # Cross-lingual text translation
 ├── linguistic_features.py       # Linguistic features analysis
