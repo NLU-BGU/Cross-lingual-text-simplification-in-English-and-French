@@ -284,8 +284,9 @@ class TextComplexityAnalyzer:
 
     def words_per_sentence(self):
         """Average number of words per sentence"""
-        words_per_sentence = [len(word_tokenize(sentence)) for sentence in self.sentences]
-        return np.mean(words_per_sentence)/len(self.clean_tokens) if len(self.clean_tokens)>0 else 0
+        if not self.sentences:
+            return 0
+        return len(self.clean_tokens) / len(self.sentences)
 
 
     def consecutive_entity_distance(self):
